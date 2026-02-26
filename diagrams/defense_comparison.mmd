@@ -1,0 +1,33 @@
+sequenceDiagram
+    participant Attacker as 🔴 Attacker (Alice, ID:1)
+    participant Server as 🖥️ Secure Server
+    participant Auth as 🛡️ Authorization Layer
+    participant DB as 🗄️ Database
+
+    Note over Attacker,DB: Secure Application - IDOR Mitigated
+
+    Attacker->>Server: GET /api/user/2 (with alice's session)
+    Server->>Auth: Check: session.user_id (1) == requested_id (2)?
+    Auth-->>Server: ❌ DENIED - User 1 ≠ User 2
+    Note right of Auth: 🛡️ Authorization check<br/>blocks unauthorized access
+    Server-->>Attacker: 403 Forbidden - Access Denied
+
+    Attacker->>Server: GET /api/orders (session-based)
+    Server->>Auth: Get user_id from session
+    Auth-->>Server: ✓ user_id = 1
+    Server->>DB: SELECT * FROM orders WHERE user_id=1
+    Note right of Server: 🛡️ Query scoped to<br/>authenticated user only
+    DB-->>Server: Only Alice's orders
+    Server-->>Attacker: 200 OK - Only own orders returned
+
+    Attacker->>Server: PUT /api/user/2 {email: hacked@evil.com}
+    Server->>Auth: Check: session.user_id (1) == target_id (2)?
+    Auth-->>Server: ❌ DENIED + LOG WARNING
+    Note right of Auth: 🛡️ Blocked + logged<br/>for security monitoring
+    Server-->>Attacker: 403 Forbidden - Access Denied
+
+    Attacker->>Server: DELETE /api/orders/uuid-of-bobs-order
+    Server->>DB: SELECT * FROM orders WHERE uuid=? AND user_id=1
+    DB-->>Server: No matching order (belongs to user 2)
+    Note right of Server: 🛡️ Ownership verification<br/>+ UUID prevents enumeration
+    Server-->>Attacker: 403 Forbidden - Order not found or access denied

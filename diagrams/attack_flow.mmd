@@ -1,0 +1,40 @@
+sequenceDiagram
+    participant Attacker as 🔴 Attacker (Alice, ID:1)
+    participant Browser as 🌐 Browser
+    participant Server as 🖥️ Web Server
+    participant DB as 🗄️ Database
+
+    Note over Attacker,DB: Phase 1: Authentication (Legitimate)
+    Attacker->>Browser: Login as alice/password123
+    Browser->>Server: POST /login {username: alice, password: password123}
+    Server->>DB: SELECT * FROM users WHERE username='alice'
+    DB-->>Server: User found (ID: 1)
+    Server-->>Browser: Set session cookie (user_id=1)
+    Browser-->>Attacker: Login successful ✓
+
+    Note over Attacker,DB: Phase 2: IDOR Exploit - Profile Enumeration
+    Attacker->>Browser: Change URL to /api/user/2
+    Browser->>Server: GET /api/user/2 (with alice's session)
+    Server->>DB: SELECT * FROM users WHERE id=2
+    Note right of Server: ⚠️ No authorization check!<br/>Server does NOT verify<br/>session.user_id == 2
+    DB-->>Server: Bob's profile data
+    Server-->>Browser: 200 OK {email: bob@..., phone: 052-...}
+    Browser-->>Attacker: Bob's private data exposed! 🔓
+
+    Note over Attacker,DB: Phase 3: IDOR Exploit - Order Data Theft
+    Attacker->>Browser: Request /api/orders/2
+    Browser->>Server: GET /api/orders/2 (with alice's session)
+    Server->>DB: SELECT * FROM orders WHERE user_id=2
+    Note right of Server: ⚠️ No ownership check!
+    DB-->>Server: Bob's orders (with credit card info)
+    Server-->>Browser: 200 OK [{product, price, card: ****8821}]
+    Browser-->>Attacker: Payment & address data exposed! 🔓
+
+    Note over Attacker,DB: Phase 4: IDOR Exploit - Data Modification
+    Attacker->>Browser: Modify Bob's profile
+    Browser->>Server: PUT /api/user/2 {email: hacked@evil.com}
+    Server->>DB: UPDATE users SET email='hacked@evil.com' WHERE id=2
+    Note right of Server: ⚠️ No authorization check!
+    DB-->>Server: Update successful
+    Server-->>Browser: 200 OK - Profile updated
+    Browser-->>Attacker: Bob's email changed! Account takeover possible! 🔓
